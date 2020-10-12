@@ -1,0 +1,221 @@
+Content Negotiation:
+    - 406 Not Acceptable:
+		- Use ReturnHttpNotAcceptable property to return 406 error if want to convey format is not acceptable
+			services.AddControllers(options => options.ReturnHttpNotAcceptable = true);
+		- By default ReturnHttpNotAcceptable is false
+    - We can add extra output formats using OutputFormatters of options:
+		options.OutputFormatters.Add(new XmlDataContractSerializerOutputFormatter());
+    - ASP.NET Core 2.1:
+		services.AddControllers(options =>
+		{
+			options.ReturnHttpNotAcceptable = true;
+			options.OutputFormatters.Add(new XmlDataContractSerializerOutputFormatter());
+		});
+    - ASP.NET Core 3.1:
+		services.AddControllers(options => options.ReturnHttpNotAcceptable = true)
+                .AddXmlDataContractSerializerFormatters();
+				
+DTO:
+    - AutoMapper:
+        - Steps:
+            1. Add Nuget Packages:
+				AutoMapper
+				AutoMapper.Extensions.Microsoft.DependencyInjection
+			2. Create Profiles folder
+			3. Create a class inside Profiles folder
+			4. Inherit the class from Profile class of AutoMapper package
+			5. Create ctor and call CreateMap method
+            6. Add AutoMapper to services inside Startup.cs file:
+				services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
+            7. Inject IMapper interface to your controller:
+				public AuthorsController(IAuthorRepository repository, IMapper mapper)
+            8. Call mapper Map method:
+				var authors = mapper.Map<List<AuthorReadDTO>>(repository.GetAll());
+				mapper.Map<AuthorReadDTO>(author)
+				
+Validations:
+    - Define validation rules using:
+        - Data Annotation:
+			- Required
+			- MaxLength
+			- Compare
+        - IValidationObject interface:
+			- Steps:
+				1. Inherit your model/DTO class from IValidatableObject interface
+				2. Implement Validate method
+				3. Check custom validation condition and yield return ValidationResult
+				4. Create n number of conditions using the 3rd step
+        - ValidationAttribute:
+            - Steps:
+				1. Create ValidationAttribute folder
+				2. Create custom class and inherit from ValidationAttribute
+				3. Implement IsValid method
+				4. Remove base method call
+				5. Check custom validation condition and yield return ValidationResult
+				6. Create n number of conditions using the 5th step
+
+CORS:
+    - Steps:
+        1. Inside ConfigureServices method:
+			// in the end
+			services.AddCors(c => 
+			{
+				c.AddPolicy("AllowOrigin", options => options.AllowAnyOrigin());
+			});
+        2. Inside Configure method:
+		
+			// after app.UseStaticFiles();
+			
+			app.UseCors(options => options.AllowOrigin());
+			
+			// before app.UseRouting();
+
+Swagger:
+	- Helps to document your API
+    - Tools:
+		- SwashBuckle.AspNetCore
+		- NSwag
+    - SwashBuckle.AspNetCore:
+        - Steps:
+            1. Add Packages:
+                Microsoft.Extensions.ApiDescription.Server
+                Microsoft.OpenApi
+                Swashbuckle.AspNetCore
+                Swashbuckle.AspNetCore.Swagger
+                Swashbuckle.AspNetCore.SwaggerGen
+                Swashbuckle.AspNetCore.SwaggerUI
+            2. Inside ConfigureServices method:
+                // at the end
+                services.AddSwaggerGen();
+            3. Inside Configure method:
+                // before app.UseRouting();
+                app.UseSwagger();
+                app.UseSwaggerUI(config =>
+                {
+                    config.SwaggerEndpoint("/swagger/v1/swagger.json", "BookStoreAPI");
+                });
+            4. Create SwaggerDoc, Inside ConfigureServices method inside AddSwaggerGen method:
+                services.AddSwaggerGen(config => 
+                {
+                    config.SwaggerDoc("v1", new OpenApiInfo 
+                    {
+                        Version = "v1",
+                        Title = "BookStore API",
+                        Description = "An example of Book Store API",
+                        TermOfService = new Uri("https://www.example.com/terms"),
+                        Contact = new OpenApiContact
+                        {
+                            Name = "Zaki Mohammed",
+                            Url = new Uri("https://www.twitter.com/"),
+                            Email = string.Empty
+                        },
+                        License = new OpenApiLicense
+                        {
+                            Name = "MIT",
+                            Url = new Uri("https://www.example.com/license")
+                        }
+                    });
+                });
+			
+        - NSwag:
+            - Comes with a tool with auto generated code for C#, TypeScript etc.
+            - Steps:
+                1. Add Package: NSwag.AspNetCore
+                2. Inside ConfigureServices method:
+                    // at the end
+                    services.AddSwaggerDocument();
+                3. Inside Configure method:
+                    // before app.UseRouting();
+                    app.UseOpenApi();
+                    app.UseSwaggerUi3();
+
+JWT:
+	- Steps:
+		1. Add Packages:
+			System.IdentityModel.Tokens.Jwt
+			Microsoft.AspNetCore.Authentication.JwtBearer
+		2. Add AppSettings:
+			"JWT": {
+				"Key": "cd25ce36-aa0d-4c32-9a7a-a5b445c78e57",
+				"Issuer": "https://localhost:44320",
+				"Audience": "https://localhost:44320",
+				"Subject": "AccessToken"
+			  }
+		3. Token Generator Controller:
+			[HttpPost]
+			public async Task<IActionResult> Post(User userData)
+			{
+				if (userData != null && userData.UserName != null && userData.Password != null)
+				{
+					var user = await GetUser(userData.UserName, userData.Password);
+					if (user != null)
+					{
+						var claims = new[]
+						{
+							new Claim(JwtRegisteredClaimNames.Sub, config["JWT:Subject"]),
+							new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+							new Claim(JwtRegisteredClaimNames.Iat, DateTime.UtcNow.ToString()),
+							new Claim(nameof(user.Id), user.Id.ToString()),
+							new Claim(nameof(user.FirstName), user.FirstName),
+							new Claim(nameof(user.LastName), user.LastName),
+							new Claim(nameof(user.UserName), user.UserName),
+						};
+
+						var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(config["JWT:Key"]));
+						var signIn = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+						var token = new JwtSecurityToken(config["JWT:Issuer"], config["JWT:Audience"], claims, expires: DateTime.UtcNow.AddDays(1), signingCredentials: signIn);
+
+						return Ok(new JwtSecurityTokenHandler().WriteToken(token));
+					}
+					else
+					{
+						return BadRequest("Invalid Credentials");
+					}
+				}
+				else
+				{
+					return BadRequest();
+				}
+			}
+	4. Configure JWT in Startup:
+		// ConfigureServices
+		services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+			.AddJwtBearer(options =>
+			{
+				options.RequireHttpsMetadata = false;
+				options.SaveToken = true;
+				options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters()
+				{
+					ValidateIssuer = true,
+					ValidateAudience = true,
+					ValidAudience = config["JWT:Audience"],
+					ValidIssuer = config["JWT:Issuer"],
+					IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(config["JWT:Key"]))
+				};
+			});
+		
+		// Configure after UseRouting
+		app.UseAuthentication();
+		app.UseAuthorization();
+	5. Apply Authorize Header
+
+API Versioning:
+	- Helps to maintain multiple version of an API in the application
+		1. Query String
+		2. HTTP Header
+		3. URL
+	- Package: Microsoft.AspNetCore.Mvc.Versioning
+	- Ways:
+		1. Query String [Default]
+		2. HTTP Header
+			- options.ApiVersionReader = new HeaderApiVersionReader("api-version");
+		3. URL
+			- [Route("api/v{version:apiVersion}/[controller]")]
+
+
+
+
+
+
+
+
